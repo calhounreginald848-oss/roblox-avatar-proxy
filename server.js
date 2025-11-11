@@ -1,6 +1,6 @@
 // server.js
 const express = require("express");
-const fetch = require("node-fetch"); // Make sure to npm install node-fetch
+const fetch = require("node-fetch"); // npm install node-fetch
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -12,7 +12,7 @@ app.get("/outfits/:userId", async (req, res) => {
     }
 
     try {
-        // Fetch all outfits using v2 endpoint
+        // Fetch all outfits from Roblox v2 endpoint
         const response = await fetch(`https://avatar.roblox.com/v2/avatar/users/${userId}/outfits`);
         const data = await response.json();
 
@@ -20,14 +20,15 @@ app.get("/outfits/:userId", async (req, res) => {
             return res.status(500).json({ error: data.errors });
         }
 
-        // Filter out non-editable outfits (animation packs, dynamic heads)
-        const savedAvatars = data.data.filter(outfit => outfit.isEditable === true);
+        // Strict filter: only editable AND type Avatar
+        const savedAvatars = data.data.filter(outfit => 
+            outfit.isEditable === true && outfit.outfitType === "Avatar"
+        );
 
-        // Optional: rename models in the response to the avatar names
         const formatted = savedAvatars.map(outfit => ({
             id: outfit.id,
             name: outfit.name,
-            playerAvatarType: outfit.outfitType // e.g., "Avatar"
+            playerAvatarType: outfit.outfitType
         }));
 
         return res.json({ data: formatted });
