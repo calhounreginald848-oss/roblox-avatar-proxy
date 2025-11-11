@@ -1,39 +1,41 @@
+// server.js
 import express from "express";
-import fetch from "node-fetch";
+import fetch from "node-fetch"; // npm install node-fetch
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 
-// Fetch editable avatars for a Roblox user
-async function fetchEditableAvatars(userId) {
-    const url = `https://avatar.roblox.com/v2/users/${userId}/avatars`;
+// Root route just responds with a simple message
+app.get("/", (req, res) => {
+  res.send("Roblox Avatar Proxy is running");
+});
 
-    const response = await fetch(url);
+// Main endpoint: fetch avatars for a userId
+app.get("/outfits/:userId", async (req, res) => {
+  const userId = req.params.userId;
+
+  try {
+    const response = await fetch(`https://users.roblox.com/v2/users/${userId}/avatars`);
     if (!response.ok) {
-        throw new Error(`Failed to fetch from Roblox API: ${response.status} ${response.statusText}`);
+      return res.status(response.status).json({ error: `Failed to fetch from Roblox API: ${response.status} ${response.statusText}` });
     }
 
     const data = await response.json();
-    if (!data.data || !Array.isArray(data.data)) {
-        return [];
+
+    // Only keep editable avatars
+    const editableAvatars = data.data.filter(a => a.isEditable === true);
+
+    if (editableAvatars.length === 0) {
+      return res.status(404).json({ error: "No editable avatars found for userId: " + userId });
     }
 
-    // Filter only editable avatars
-    return data.data.filter(item => item.isEditable === true);
-}
-
-app.get("/outfits/:userId", async (req, res) => {
-    const userId = req.params.userId;
-
-    try {
-        const avatars = await fetchEditableAvatars(userId);
-        res.json({ data: avatars });
-    } catch (err) {
-        console.error(`Failed to fetch from Roblox API: ${err}`);
-        res.status(500).json({ error: err.message });
-    }
+    return res.json({ data: editableAvatars });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.listen(PORT, () => {
-    console.log(`Proxy running on port ${PORT}`);
+  console.log(`Roblox Avatar Proxy running on port ${PORT}`);
 });
