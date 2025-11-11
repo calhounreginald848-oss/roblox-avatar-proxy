@@ -1,47 +1,61 @@
 // server.js
 import express from "express";
-import fetch from "node-fetch";
+import cors from "cors";
+import fetch from "node-fetch"; // For older Node.js versions
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+app.use(cors());
 
-// Health check route
-app.get("/", (req, res) => {
-  res.send("Roblox Avatar Proxy is running.");
-});
+// ✅ Roblox Avatars v2 API endpoint
+const ROBLOX_V2_URL = "https://avatar.roblox.com/v2/users";
 
-// Outfits/avatars route
-app.get("/outfits/:userId", async (req, res) => {
+// Route to fetch editable avatars
+app.get("/avatars/:userId", async (req, res) => {
   const userId = req.params.userId;
 
   try {
-    const url = `https://avatar.roblox.com/v2/users/${userId}/avatars`;
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "RobloxProxy/1.0"
-      }
-    });
+    const response = await fetch(`${ROBLOX_V2_URL}/${userId}/avatars`);
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: `Failed to fetch from Roblox API: ${response.status} ${response.statusText}` });
+      return res.status(response.status).json({
+        error: `Roblox API responded with ${response.status}`,
+      });
     }
 
     const data = await response.json();
 
-    if (!data.data || !Array.isArray(data.data) || data.data.length === 0) {
-      return res.json({ data: [] });
+    // Make sure "data" exists and is a list
+    if (!data.data || !Array.isArray(data.data)) {
+      return res.status(500).json({ error: "Invalid data format from Roblox API" });
     }
 
-    // Filter only editable avatars
-    const editable = data.data.filter(item => item.isEditable === true && item.outfitType === "Avatar");
+    // Filter only editable avatars (user-saved outfits)
+    const editableAvatars = data.data.filter((avatar) => avatar.isEditable);
 
-    return res.json({ data: editable });
-  } catch (err) {
-    console.error("Proxy error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    if (editableAvatars.length === 0) {
+      return res.json({ data: [], message: "No editable avatars found for this user" });
+    }
+
+    // Return only needed info for Roblox Studio
+    res.json({
+      data: editableAvatars.map((a) => ({
+        id: a.id,
+        name: a.name,
+        playerAvatarType: a.playerAvatarType || "R15",
+        isEditable: a.isEditable,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching from Roblox API:", error);
+    res.status(500).json({ error: "Failed to fetch from Roblox API" });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Proxy running on port ${PORT}`);
+// ✅ Root route (prevents 'Cannot GET /')
+app.get("/", (req, res) => {
+  res.send("✅ Roblox Avatar v2 Proxy is running!");
 });
+
+// Start server on Render port (or local)
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
