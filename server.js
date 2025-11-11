@@ -6,16 +6,15 @@ import fetch from "node-fetch"; // For older Node.js versions
 const app = express();
 app.use(cors());
 
-// ✅ Roblox Avatars v2 API endpoint
+// ✅ Correct Roblox v2 Outfits API endpoint
 const ROBLOX_V2_URL = "https://avatar.roblox.com/v2/users";
 
-// Route to fetch editable avatars
+// Route to fetch editable outfits (saved avatars)
 app.get("/avatars/:userId", async (req, res) => {
   const userId = req.params.userId;
 
   try {
-    const response = await fetch(`${ROBLOX_V2_URL}/${userId}/avatars`);
-
+    const response = await fetch(`${ROBLOX_V2_URL}/${userId}/outfits`);
     if (!response.ok) {
       return res.status(response.status).json({
         error: `Roblox API responded with ${response.status}`,
@@ -24,25 +23,23 @@ app.get("/avatars/:userId", async (req, res) => {
 
     const data = await response.json();
 
-    // Make sure "data" exists and is a list
     if (!data.data || !Array.isArray(data.data)) {
       return res.status(500).json({ error: "Invalid data format from Roblox API" });
     }
 
-    // Filter only editable avatars (user-saved outfits)
-    const editableAvatars = data.data.filter((avatar) => avatar.isEditable);
+    // ✅ Only include editable (user-saved) outfits
+    const editableOutfits = data.data.filter((outfit) => outfit.isEditable);
 
-    if (editableAvatars.length === 0) {
-      return res.json({ data: [], message: "No editable avatars found for this user" });
+    if (editableOutfits.length === 0) {
+      return res.json({ data: [], message: "No editable outfits found for this user" });
     }
 
-    // Return only needed info for Roblox Studio
     res.json({
-      data: editableAvatars.map((a) => ({
-        id: a.id,
-        name: a.name,
-        playerAvatarType: a.playerAvatarType || "R15",
-        isEditable: a.isEditable,
+      data: editableOutfits.map((o) => ({
+        id: o.id,
+        name: o.name,
+        playerAvatarType: o.playerAvatarType || "R15",
+        isEditable: o.isEditable,
       })),
     });
   } catch (error) {
@@ -51,11 +48,11 @@ app.get("/avatars/:userId", async (req, res) => {
   }
 });
 
-// ✅ Root route (prevents 'Cannot GET /')
+// Root route to stop "Cannot GET /"
 app.get("/", (req, res) => {
   res.send("✅ Roblox Avatar v2 Proxy is running!");
 });
 
-// Start server on Render port (or local)
+// Start server (Render/Local)
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Proxy running on port ${PORT}`));
