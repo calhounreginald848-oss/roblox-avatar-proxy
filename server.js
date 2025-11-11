@@ -1,6 +1,6 @@
 // server.js
-const express = require("express");
-const fetch = require("node-fetch"); // npm install node-fetch
+import express from "express";
+import fetch from "node-fetch"; // npm install node-fetch@2
 const app = express();
 const PORT = process.env.PORT || 3000;
 
