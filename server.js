@@ -1,54 +1,64 @@
-// server.js
 import express from "express";
-import fetch from "node-fetch"; // npm install node-fetch
+import fetch from "node-fetch"; // npm install node-fetch@3
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+app.use(express.json());
 
-// Root route
-app.get("/", (req, res) => {
-  res.send("Proxy is running. Use /outfits/:userId");
-});
+const ROBLOX_OUTFITS_ENDPOINT = "https://avatar.roblox.com/v2/users";
 
-// Outfits route
-app.get("/outfits/:userId", async (req, res) => {
-  const { userId } = req.params;
+const PORT = process.env.PORT || 10000;
 
-  if (!userId) {
-    return res.status(400).json({ errors: [{ code: 1, message: "UserId required" }] });
-  }
+// Helper to fetch only editable avatars
+async function fetchEditableAvatars(userId) {
+    const url = `${ROBLOX_OUTFITS_ENDPOINT}/${userId}/outfits`;
 
-  try {
-    // Roblox v2 inventory API
-    const url = `https://inventory.roblox.com/v2/users/${userId}/inventory-items/collectibles`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Failed to fetch from Roblox API");
+    try {
+        const res = await fetch(url, {
+            headers: {
+                "User-Agent": "RobloxProxy/1.0"
+            }
+        });
 
-    const data = await response.json();
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    // Filter only editable Avatar outfits
-    const editableAvatars = data.data.filter(
-      item => item.isEditable && item.outfitType === "Avatar"
-    );
+        const data = await res.json();
 
-    if (editableAvatars.length === 0) {
-      return res.json({ data: [] });
+        if (!data.data) return [];
+
+        // Filter out non-editable and unwanted outfit types
+        const filtered = data.data.filter(
+            outfit => outfit.isEditable === true && outfit.outfitType === "Avatar"
+        );
+
+        return filtered.map(o => ({
+            id: o.id,
+            name: o.name,
+            playerAvatarType: "R15" // Roblox default, can change later if you want
+        }));
+    } catch (err) {
+        console.error("Failed to fetch from Roblox API:", err);
+        return null;
     }
+}
 
-    // Map to simpler format for Roblox script
-    const formatted = editableAvatars.map(item => ({
-      id: item.id,
-      name: item.name,
-      playerAvatarType: "R15" // default, you can adjust later
-    }));
+// Route to get user avatars
+app.get("/outfits/:userId", async (req, res) => {
+    const userId = req.params.userId;
 
-    return res.json({ data: formatted });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ errors: [{ code: 0, message: "InternalServerError" }] });
-  }
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    const avatars = await fetchEditableAvatars(userId);
+
+    if (!avatars) return res.status(500).json({ error: "Failed to fetch from Roblox API" });
+
+    if (avatars.length === 0) return res.status(404).json({ error: "No editable avatars found" });
+
+    res.json({ data: avatars });
 });
+
+// Basic test route
+app.get("/", (req, res) => res.send("Roblox Avatar Proxy is running."));
 
 app.listen(PORT, () => {
-  console.log(`Proxy running on port ${PORT}`);
+    console.log(`Roblox Avatar Proxy running on port ${PORT}`);
 });
