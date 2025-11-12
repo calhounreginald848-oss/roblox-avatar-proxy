@@ -23,9 +23,10 @@ app.get('/outfits/:userId', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    // Get outfits for the user
+    // Get outfits with browser-like headers
     const outfitsResp = await axios.get(
-      `https://avatar.roblox.com/v1/users/${userId}/outfits?itemsPerPage=150`
+      `https://avatar.roblox.com/v1/users/${userId}/outfits?itemsPerPage=50`,
+      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
     );
 
     const outfitsRaw = outfitsResp.data.data || [];
@@ -41,7 +42,8 @@ app.get('/outfits/:userId', async (req, res) => {
 
     if (outfitIds.length > 0) {
       const thumbResp = await axios.get(
-        `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitIds}&size=150x150&format=Png&isCircular=false`
+        `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitIds}&size=150x150&format=Png&isCircular=false`,
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
       );
       thumbs = thumbResp.data.data || [];
     }
@@ -59,9 +61,16 @@ app.get('/outfits/:userId', async (req, res) => {
 
     cache.set(cacheKey, payload);
     res.json(payload);
+
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'failed to fetch outfits' });
+    console.error(
+      'Failed to fetch outfits:',
+      err.response?.status,
+      err.response?.data || err.message
+    );
+
+    // Return empty array instead of failing if Roblox blocks the request
+    res.json([]);
   }
 });
 
