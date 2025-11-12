@@ -1,11 +1,17 @@
 const express = require('express');
 const axios = require('axios');
-const NodeCache = new (require('node-cache'))({ stdTTL: 60 });
+const NodeCache = require('node-cache');
 
 const app = express();
-const cache = NodeCache;
+const cache = new NodeCache({ stdTTL: 60 }); // fixed NodeCache instance
 const PORT = process.env.PORT || 3000;
 
+// Root route for testing
+app.get('/', (req, res) => {
+  res.send('Roblox proxy is running. Use /api/outfits?username=USERNAME');
+});
+
+// Outfits route
 app.get('/api/outfits', async (req, res) => {
   const username = (req.query.username || '').trim();
   if (!username) {
@@ -19,22 +25,23 @@ app.get('/api/outfits', async (req, res) => {
   }
 
   try {
+    // Get user ID from username
     const userResp = await axios.post(
       'https://users.roblox.com/v1/usernames/users',
       { usernames: [username] },
       { headers: { 'Content-Type': 'application/json' } }
     );
 
-    const data = userResp.data;
-    const userEntry = data?.data?.[0];
+    const userEntry = userResp.data?.data?.[0];
     if (!userEntry?.id) {
       return res.status(404).json({ error: 'user not found' });
     }
 
     const userId = userEntry.id;
 
+    // Get outfits
     const outfitsResp = await axios.get(
-      `https://avatar.roblox.com/v1/users/${userId}/outfits`
+      `https://avatar.roblox.com/v1/users/${userId}/outfits?itemsPerPage=150`
     );
 
     const outfitsRaw = outfitsResp.data.data || [];
@@ -74,6 +81,7 @@ app.get('/api/outfits', async (req, res) => {
   }
 });
 
+// Start server
 app.listen(PORT, () => {
   console.log(`Roblox proxy listening on port ${PORT}`);
 });
