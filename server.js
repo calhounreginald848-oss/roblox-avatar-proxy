@@ -1,57 +1,51 @@
 // server.js
 import express from "express";
-import cors from "cors";
 import fetch from "node-fetch";
 
 const app = express();
-app.use(cors());
+const PORT = process.env.PORT || 10000;
 
-// ✅ Correct Roblox v2 outfits endpoint
-const ROBLOX_API = "https://avatar.roblox.com/v2/avatar/users";
+// Put your Roblox API key here
+const ROBLOX_API_KEY = "h/LQdc8ZNUORLhPjvOJz8zZTOx/1kpVO4InOoki+yglKC60oZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1ndlRGRmtZemhhVGxWUFVreG9VR3AyVDBwNk9IcGFWRTk0THpGcmNGWlBORWx1VDI5cmFTdDVaMnhMUXpZd2J5SXNJbTkzYm1WeVNXUWlPaUkwT1RVME9UZzVPVGs0SWl3aVpYaHdJam94TnpZeU9URXhNalU1TENKcFlYUWlPakUzTmpJNU1EYzJOVGtzSW01aVppSTZNVGMyTWprd056WTFPWDAuUVBIS28zOHFiUTQzajJFWDhQalBnamI1T2w1bjVVRGdRTXBHSElrYnB2WWx1aXpjUDBMRDhWYlZISGFVczJCX1hpSFZUOXg1WDlYRnZISHlURTRIWHoyRE80NHFRVWx3dGR3VUlDV1QxR2ZxSldyaHNzdEQwendWQWxNSlc0VGVjbVkzVWJyc2QtSHMyREp1cVBqM3dIVHpJOUF2R0ota29wSm9TTldsUlcwb041b2dFcWJRS3pUUjcxTF80VldmdkI3X3czSVhOaGpUSTFJYUEyRDJsQTBINmFuQTdjd3ZYaENmeFB3Y0YwNEtfN09pZG42dkZBWHNXT1hGVDBKYmZTNnU3OGRKbkpnWnpScTlDMVM0NnhOV1FUX1dFaFc3N240a0hCa1FzSlpJd0psUlZjOG1pYUpNU2J1bVVSUnRtUWdMRWR1NmhsQzZaZE9sSTlwbG1R";
 
-// Fetch outfits for a user
+// Endpoint: /avatars/:userId
 app.get("/avatars/:userId", async (req, res) => {
-  const userId = req.params.userId;
+  const { userId } = req.params;
 
   try {
-    // ✅ Hit the actual Roblox v2 avatar outfits endpoint
-    const robloxRes = await fetch(`${ROBLOX_API}/${userId}/outfits`);
-
-    if (!robloxRes.ok) {
-      console.error(`Roblox API responded with ${robloxRes.status}`);
-      return res.status(robloxRes.status).json({
-        error: `Roblox API responded with ${robloxRes.status}`,
-      });
-    }
-
-    const json = await robloxRes.json();
-
-    if (!json.data || !Array.isArray(json.data)) {
-      return res.status(500).json({ error: "Invalid data format from Roblox API" });
-    }
-
-    // ✅ Keep only editable outfits (user-saved avatars)
-    const editable = json.data.filter((outfit) => outfit.isEditable === true);
-
-    res.json({
-      data: editable.map((outfit) => ({
-        id: outfit.id,
-        name: outfit.name,
-        playerAvatarType: outfit.playerAvatarType || "R15",
-        isEditable: outfit.isEditable,
-      })),
+    const response = await fetch(`https://avatar.roblox.com/v1/users/${userId}/avatars`, {
+      headers: {
+        "x-api-key": ROBLOX_API_KEY
+      }
     });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ error: `Roblox API responded with ${response.status}` });
+    }
+
+    const data = await response.json();
+
+    // Filter only editable avatars and map the fields
+    const editableAvatars = data.data
+      .filter(a => a.isEditable)
+      .map(a => ({
+        id: a.id,
+        name: a.name,
+        playerAvatarType: a.playerAvatarType,
+        isEditable: a.isEditable
+      }));
+
+    if (editableAvatars.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    res.json({ data: editableAvatars });
   } catch (err) {
-    console.error("Error fetching from Roblox API:", err);
+    console.error("Failed to fetch from Roblox API:", err);
     res.status(500).json({ error: "Failed to fetch from Roblox API" });
   }
 });
 
-// Root route for health check
-app.get("/", (req, res) => {
-  res.send("✅ Roblox v2 Avatar Proxy is running!");
+app.listen(PORT, () => {
+  console.log(`Proxy server running on port ${PORT}`);
 });
-
-// Start the server
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
