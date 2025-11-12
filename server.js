@@ -23,21 +23,21 @@ app.get('/outfits/:userId', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    // Get outfits with browser-like headers
+    // Fetch outfits
     const outfitsResp = await axios.get(
       `https://avatar.roblox.com/v1/users/${userId}/outfits?itemsPerPage=50`,
       { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
     );
 
     const outfitsRaw = outfitsResp.data.data || [];
-    const outfits = outfitsRaw.filter(outfit => outfit?.isEditable !== false);
 
-    if (outfits.length === 0) {
+    if (outfitsRaw.length === 0) {
       cache.set(cacheKey, []);
       return res.json([]);
     }
 
-    const outfitIds = outfits.map(o => o.id).join(',');
+    // Collect all outfit IDs for thumbnails
+    const outfitIds = outfitsRaw.map(o => o.id).join(',');
     let thumbs = [];
 
     if (outfitIds.length > 0) {
@@ -53,7 +53,8 @@ app.get('/outfits/:userId', async (req, res) => {
       thumbMap.set(t.targetId, t.imageUrl);
     }
 
-    const payload = outfits.map(outfit => ({
+    // Build final payload
+    const payload = outfitsRaw.map(outfit => ({
       id: outfit.id,
       name: outfit.name,
       thumbnail: thumbMap.get(outfit.id) || null
@@ -69,7 +70,7 @@ app.get('/outfits/:userId', async (req, res) => {
       err.response?.data || err.message
     );
 
-    // Return empty array instead of failing if Roblox blocks the request
+    // Return empty array if API fails
     res.json([]);
   }
 });
