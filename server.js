@@ -1,66 +1,79 @@
-// server.js
-import express from "express";
-import fetch from "node-fetch";
+const express = require('express');
+const axios = require('axios');
+const NodeCache = new (require('node-cache'))({ stdTTL: 60 });
 
 const app = express();
-const PORT = process.env.PORT || 10000;
+const cache = NodeCache;
+const PORT = process.env.PORT || 3000;
 
-// YOUR Roblox Cloud API key here
-const CLOUD_KEY = "h/LQdc8ZNUORLhPjvOJz8zZTOx/1kpVO4InOoki+yglKC60oZXlKaGJHY2lPaUpTVXpJMU5pSXNJbXRwWkNJNkluTnBaeTB5TURJeExUQTNMVEV6VkRFNE9qVXhPalE1V2lJc0luUjVjQ0k2SWtwWFZDSjkuZXlKaGRXUWlPaUpTYjJKc2IzaEpiblJsY201aGJDSXNJbWx6Y3lJNklrTnNiM1ZrUVhWMGFHVnVkR2xqWVhScGIyNVRaWEoyYVdObElpd2lZbUZ6WlVGd2FVdGxlU0k2SW1ndlRGRmtZemhhVGxWUFVreG9VR3AyVDBwNk9IcGFWRTk0THpGcmNGWlBORWx1VDI5cmFTdDVaMnhMUXpZd2J5SXNJbTkzYm1WeVNXUWlPaUkwT1RVME9UZzVPVGs0SWl3aVpYaHdJam94TnpZeU9URXhNalU1TENKcFlYUWlPakUzTmpJNU1EYzJOVGtzSW01aVppSTZNVGMyTWprd056WTFPWDAuUVBIS28zOHFiUTQzajJFWDhQalBnamI1T2w1bjVVRGdRTXBHSElrYnB2WWx1aXpjUDBMRDhWYlZISGFVczJCX1hpSFZUOXg1WDlYRnZISHlURTRIWHoyRE80NHFRVWx3dGR3VUlDV1QxR2ZxSldyaHNzdEQwendWQWxNSlc0VGVjbVkzVWJyc2QtSHMyREp1cVBqM3dIVHpJOUF2R0ota29wSm9TTldsUlcwb041b2dFcWJRS3pUUjcxTF80VldmdkI3X3czSVhOaGpUSTFJYUEyRDJsQTBINmFuQTdjd3ZYaENmeFB3Y0YwNEtfN09pZG42dkZBWHNXT1hGVDBKYmZTNnU3OGRKbkpnWnpScTlDMVM0NnhOV1FUX1dFaFc3N240a0hCa1FzSlpJd0psUlZjOG1pYUpNU2J1bVVSUnRtUWdMRWR1NmhsQzZaZE9sSTlwbG1R";
-
-// Root route
-app.get("/", (req, res) => {
-  res.send("Roblox Avatar Proxy v2 is running.");
-});
-
-// Fetch avatars for a user
-app.get("/avatars/:userId", async (req, res) => {
-  const { userId } = req.params;
-
-  if (!userId) {
-    return res.status(400).json({ error: "Missing userId" });
+app.get('/api/outfits', async (req, res) => {
+  const username = (req.query.username || '').trim();
+  if (!username) {
+    return res.status(400).json({ error: 'username required' });
   }
 
-  const url = `https://avatar.roblox.com/v1/users/${userId}/outfits/2`;
+  const cacheKey = `outfits:${username.toLowerCase()}`;
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return res.json(cached);
+  }
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        "x-api-key": CLOUD_KEY,
-        "Content-Type": "application/json",
-      },
-    });
+    const userResp = await axios.post(
+      'https://users.roblox.com/v1/usernames/users',
+      { usernames: [username] },
+      { headers: { 'Content-Type': 'application/json' } }
+    );
 
-    if (response.status === 404) {
-      return res.status(404).json({
-        error: "Roblox API responded with 404",
-        message: JSON.stringify({ errors: [{ code: 0, message: "NotFound" }] }),
-      });
+    const data = userResp.data;
+    const userEntry = data?.data?.[0];
+    if (!userEntry?.id) {
+      return res.status(404).json({ error: 'user not found' });
     }
 
-    if (response.status === 429) {
-      return res.status(429).json({
-        error: "Roblox API rate limit hit",
-        message: "Try again later",
-      });
+    const userId = userEntry.id;
+
+    const outfitsResp = await axios.get(
+      `https://avatar.roblox.com/v1/users/${userId}/outfits`
+    );
+
+    const outfitsRaw = outfitsResp.data.data || [];
+    const outfits = outfitsRaw.filter(outfit => outfit?.isEditable !== false);
+
+    if (outfits.length === 0) {
+      cache.set(cacheKey, []);
+      return res.json([]);
     }
 
-    const data = await response.json();
+    const outfitIds = outfits.map(o => o.id).join(',');
+    let thumbs = [];
 
-    if (!data || !data.data || data.data.length === 0) {
-      return res.json({ data: [] });
+    if (outfitIds.length > 0) {
+      const thumbResp = await axios.get(
+        `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitIds}&size=150x150&format=Png&isCircular=false`
+      );
+      thumbs = thumbResp.data.data || [];
     }
 
-    // Only return editable outfits
-    const editable = data.data.filter((o) => o.isEditable);
+    const thumbMap = new Map();
+    for (const t of thumbs) {
+      thumbMap.set(t.targetId, t.imageUrl);
+    }
 
-    res.json({ data: editable });
+    const payload = outfits.map(outfit => ({
+      id: outfit.id,
+      name: outfit.name,
+      thumbnail: thumbMap.get(outfit.id) || null
+    }));
+
+    cache.set(cacheKey, payload);
+    res.json(payload);
   } catch (err) {
-    console.error("Failed to fetch from Roblox API", err);
-    res.status(500).json({ error: "Failed to fetch from Roblox API" });
+    console.error(err.message);
+    res.status(500).json({ error: 'failed to fetch outfits' });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Roblox Avatar Proxy running on port ${PORT}`);
+  console.log(`Roblox proxy listening on port ${PORT}`);
 });
