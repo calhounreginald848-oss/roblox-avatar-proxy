@@ -1,14 +1,17 @@
 {
-  "name": "roblox-avatar-proxy",
+  "name": "roblox-outfits-proxy",
   "version": "1.0.0",
-  "main": "server.js",
-  "type": "module",
+  "description": "A simple Roblox outfits proxy API",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js"
   },
+  "keywords": ["roblox", "express", "api", "outfits"],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2",
-    "node-fetch": "^3.3.2",
-    "cors": "^2.8.5"
+    "axios": "^1.6.5",
+    "express": "^4.18.2",
+    "node-cache": "^5.1.2"
   }
 }
