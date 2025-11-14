@@ -6,10 +6,17 @@ const app = express();
 const cache = new NodeCache({ stdTTL: 60 });
 const PORT = process.env.PORT || 3000;
 
+// ---- PING ROUTE ----
+app.get('/ping', (req, res) => {
+  res.send('Pong! Service is alive.');
+});
+
+// ---- ROOT ROUTE ----
 app.get('/', (req, res) => {
   res.send('Roblox outfit proxy running. Use /outfits/:userId');
 });
 
+// ---- OUTFIT ROUTE ----
 app.get('/outfits/:userId', async (req, res) => {
   const userId = req.params.userId?.trim();
   if (!userId) return res.status(400).json({ error: "userId required" });
@@ -19,13 +26,10 @@ app.get('/outfits/:userId', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    // Fetch all outfits up to 150
     const url = `https://avatar.roblox.com/v1/users/${userId}/outfits?page=1&itemsPerPage=150`;
     const response = await axios.get(url);
 
     const outfits = response.data?.data || [];
-
-    // Keep all original outfit fields, but filter only editable ones
     const editableOutfits = outfits.filter(o => o.isEditable === true);
 
     cache.set(cacheKey, editableOutfits);
@@ -42,6 +46,7 @@ app.get('/outfits/:userId', async (req, res) => {
   }
 });
 
+// ---- START SERVER ----
 app.listen(PORT, () => {
   console.log(`Roblox proxy listening on port ${PORT}`);
 });
