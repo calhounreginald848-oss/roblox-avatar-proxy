@@ -6,12 +6,11 @@ const app = express();
 const cache = new NodeCache({ stdTTL: 60 });
 const PORT = process.env.PORT || 3000;
 
-// Root
 app.get('/', (req, res) => {
   res.send('Roblox outfit proxy running. Use /outfits/:userId');
 });
 
-// Fetch outfits (max: 150)
+// GET outfits (max 150)
 app.get('/outfits/:userId', async (req, res) => {
   const userId = req.params.userId?.trim();
   if (!userId) return res.status(400).json({ error: "userId required" });
@@ -21,52 +20,66 @@ app.get('/outfits/:userId', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-
-    // --- 1. Fetch up to 150 outfits from Roblox ---
+    // ----------------------------------------------------------------------
+    // 1. FETCH OUTFITS
+    // ----------------------------------------------------------------------
     const outfitsResp = await axios.get(
       `https://avatar.roblox.com/v1/users/${userId}/outfits?itemsPerPage=150`,
-      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+          "Accept": "application/json",
+          "Accept-Encoding": "gzip, deflate, br"
+        }
+      }
     );
 
-    const outfits = outfitsResp.data.data || [];
+    const outfits = outfitsResp.data?.data || [];
 
+    // If Roblox returned NO outfits
     if (outfits.length === 0) {
       cache.set(cacheKey, []);
       return res.json([]);
     }
 
-    // --- 2. Fetch thumbnails in chunks of 50 ---
+    // ----------------------------------------------------------------------
+    // 2. THUMBNAILS (CHUNKED TO AVOID FAILURE)
+    // ----------------------------------------------------------------------
     const outfitIds = outfits.map(o => o.id);
     const thumbs = [];
-
     const chunkSize = 50;
+
     for (let i = 0; i < outfitIds.length; i += chunkSize) {
       const chunk = outfitIds.slice(i, i + chunkSize);
-
       const resp = await axios.get(
-        `https://thumbnails.roblox.com/v1/outfits`,
+        "https://thumbnails.roblox.com/v1/outfits",
         {
           params: {
-            outfitIds: chunk.join(','),
+            outfitIds: chunk.join(","),
             size: "150x150",
             format: "Png",
             isCircular: false
           },
-          headers: { "User-Agent": "Mozilla/5.0" }
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate, br"
+          }
         }
       );
 
-      thumbs.push(...(resp.data.data || []));
+      if (resp.data?.data) thumbs.push(...resp.data.data);
     }
 
-    // Map thumbnails
     const thumbMap = new Map();
     thumbs.forEach(t => {
       if (t.state === "Completed") thumbMap.set(t.targetId, t.imageUrl);
     });
 
-    // --- 3. Final formatted response ---
-    const payload = outfits.map(o => ({
+    // ----------------------------------------------------------------------
+    // 3. RETURN FINAL DATA
+    // ----------------------------------------------------------------------
+    const result = outfits.map(o => ({
       id: o.id,
       name: o.name,
       isEditable: o.isEditable,
@@ -74,16 +87,26 @@ app.get('/outfits/:userId', async (req, res) => {
       thumbnail: thumbMap.get(o.id) || null
     }));
 
-    cache.set(cacheKey, payload);
-    res.json(payload);
+    cache.set(cacheKey, result);
+    res.json(result);
+  } 
+  catch (err) {
+    console.error("=== ROBLOX API ERROR ===");
+    console.error("Status:", err.response?.status);
+    console.error("Data:", err.response?.data);
+    console.error("Message:", err.message);
+    console.error("========================");
 
-  } catch (err) {
-    console.error("Error fetching outfits:", err.response?.status, err.response?.data || err.message);
-    res.json([]);
+    // Send REAL error back for debugging (do NOT hide it)
+    return res.status(500).json({
+      error: true,
+      message: err.message,
+      robloxStatus: err.response?.status || null,
+      robloxResponse: err.response?.data || null
+    });
   }
 });
 
-// Start server
 app.listen(PORT, () => {
   console.log(`Roblox proxy listening on port ${PORT}`);
 });
