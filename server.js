@@ -3,74 +3,82 @@ const axios = require('axios');
 const NodeCache = require('node-cache');
 
 const app = express();
-const cache = new NodeCache({ stdTTL: 60 }); // 1-minute cache
+const cache = new NodeCache({ stdTTL: 60 });
 const PORT = process.env.PORT || 3000;
 
-// Root route
+// Root
 app.get('/', (req, res) => {
-  res.send('Roblox proxy is running. Use /outfits/:userId');
+  res.send('Roblox outfit proxy running. Use /outfits/:userId');
 });
 
-// Outfits route by user ID
+// Fetch outfits (max: 150)
 app.get('/outfits/:userId', async (req, res) => {
-  const userId = (req.params.userId || '').trim();
-  if (!userId) {
-    return res.status(400).json({ error: 'userId required' });
-  }
+  const userId = req.params.userId?.trim();
+  if (!userId) return res.status(400).json({ error: "userId required" });
 
   const cacheKey = `outfits:${userId}`;
   const cached = cache.get(cacheKey);
   if (cached) return res.json(cached);
 
   try {
-    // Fetch outfits
+
+    // --- 1. Fetch up to 150 outfits from Roblox ---
     const outfitsResp = await axios.get(
-      `https://avatar.roblox.com/v1/users/${userId}/outfits?itemsPerPage=50`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
+      `https://avatar.roblox.com/v1/users/${userId}/outfits?itemsPerPage=150`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
     );
 
-    const outfitsRaw = outfitsResp.data.data || [];
+    const outfits = outfitsResp.data.data || [];
 
-    if (outfitsRaw.length === 0) {
+    if (outfits.length === 0) {
       cache.set(cacheKey, []);
       return res.json([]);
     }
 
-    // Collect all outfit IDs for thumbnails
-    const outfitIds = outfitsRaw.map(o => o.id).join(',');
-    let thumbs = [];
+    // --- 2. Fetch thumbnails in chunks of 50 ---
+    const outfitIds = outfits.map(o => o.id);
+    const thumbs = [];
 
-    if (outfitIds.length > 0) {
-      const thumbResp = await axios.get(
-        `https://thumbnails.roblox.com/v1/outfits?outfitIds=${outfitIds}&size=150x150&format=Png&isCircular=false`,
-        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' } }
+    const chunkSize = 50;
+    for (let i = 0; i < outfitIds.length; i += chunkSize) {
+      const chunk = outfitIds.slice(i, i + chunkSize);
+
+      const resp = await axios.get(
+        `https://thumbnails.roblox.com/v1/outfits`,
+        {
+          params: {
+            outfitIds: chunk.join(','),
+            size: "150x150",
+            format: "Png",
+            isCircular: false
+          },
+          headers: { "User-Agent": "Mozilla/5.0" }
+        }
       );
-      thumbs = thumbResp.data.data || [];
+
+      thumbs.push(...(resp.data.data || []));
     }
 
+    // Map thumbnails
     const thumbMap = new Map();
-    for (const t of thumbs) {
-      thumbMap.set(t.targetId, t.imageUrl);
-    }
+    thumbs.forEach(t => {
+      if (t.state === "Completed") thumbMap.set(t.targetId, t.imageUrl);
+    });
 
-    // Build final payload
-    const payload = outfitsRaw.map(outfit => ({
-      id: outfit.id,
-      name: outfit.name,
-      thumbnail: thumbMap.get(outfit.id) || null
+    // --- 3. Final formatted response ---
+    const payload = outfits.map(o => ({
+      id: o.id,
+      name: o.name,
+      isEditable: o.isEditable,
+      type: o.type,
+      thumbnail: thumbMap.get(o.id) || null
     }));
 
     cache.set(cacheKey, payload);
     res.json(payload);
 
   } catch (err) {
-    console.error(
-      'Failed to fetch outfits:',
-      err.response?.status,
-      err.response?.data || err.message
-    );
-
-    // Return empty array if API fails
+    console.error("Error fetching outfits:", err.response?.status, err.response?.data || err.message);
     res.json([]);
   }
 });
