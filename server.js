@@ -19,31 +19,20 @@ app.get('/outfits/:userId', async (req, res) => {
   if (cached) return res.json(cached);
 
   try {
-    // Fetch outfits using the verified working endpoint
+    // Fetch all outfits up to 150
     const url = `https://avatar.roblox.com/v1/users/${userId}/outfits?page=1&itemsPerPage=150`;
     const response = await axios.get(url);
 
     const outfits = response.data?.data || [];
 
-    // Build simple payload
-    const finalData = outfits.map(o => ({
-      id: o.id,
-      name: o.name,
-      isEditable: o.isEditable,
-      type: o.type
-    }));
+    // Keep all original outfit fields, but filter only editable ones
+    const editableOutfits = outfits.filter(o => o.isEditable === true);
 
-    cache.set(cacheKey, finalData);
-    res.json(finalData);
+    cache.set(cacheKey, editableOutfits);
+    res.json(editableOutfits);
 
   } catch (err) {
-    console.error("=== ROBLOX API ERROR ===");
-    console.error("URL:", err.config?.url);
-    console.error("Status:", err.response?.status);
-    console.error("Data:", err.response?.data);
-    console.error("Message:", err.message);
-    console.error("========================");
-
+    console.error("=== ROBLOX API ERROR ===", err.message);
     res.status(500).json({
       error: true,
       message: err.message,
